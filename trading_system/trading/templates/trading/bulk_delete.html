@@ -1,277 +1,417 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bulk User Management</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        :root {
-            --primary-color: #34d399;
-            --primary-hover: #059669;
-            --bg-color: #111111;
-            --card-bg: #1c1c1c;
-            --text-color: #ffffff;
-            --border-color: #333333;
-            --secondary-text: #9ca3af;
-        }
+{% extends 'trading/base.html' %}
+{% block title %}Bulk User Delete{% endblock %}
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+{% block content %}
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+<style>
+    :root {
+        --danger-color: #ef4444;
+        --danger-hover: #dc2626;
+        --bg-color: #111111;
+        --card-bg: #1c1c1c;
+        --text-color: #ffffff;
+        --border-color: #333333;
+        --secondary-text: #9ca3af;
+    }
 
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            line-height: 1.6;
-        }
+    /* Container & Card */
+    .container {
+        max-width: 800px;
+        margin: 40px auto;
+        padding: 0 20px;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        color: var(--text-color);
+    }
 
-        .container {
-            max-width: 800px;
-            margin: 40px auto;
-            padding: 0 20px;
-        }
+    .upload-card {
+        background: var(--card-bg);
+        border-radius: 16px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+        padding: 32px;
+        text-align: center;
+        border: 1px solid var(--border-color);
+    }
 
-        .upload-card {
-            background: var(--card-bg);
-            border-radius: 16px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
-            padding: 32px;
-            text-align: center;
-            border: 1px solid var(--border-color);
-        }
+    /* Header */
+    .header { margin-bottom: 24px; }
+    .header h1 { color: var(--text-color); font-size: 24px; font-weight: 700; margin-bottom: 12px; }
+    .header span { color: var(--danger-color); }
+    .header p { color: var(--secondary-text); font-size: 16px; }
 
-        .header {
-            margin-bottom: 32px;
-        }
+    /* Danger Banner */
+    .danger-banner {
+        background: rgba(239, 68, 68, 0.08);
+        border: 1px solid rgba(239, 68, 68, 0.25);
+        border-radius: 8px;
+        padding: 16px;
+        color: #f87171;
+        font-size: 14px;
+        margin-bottom: 24px;
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        text-align: left;
+    }
+    .danger-banner i { font-size: 18px; margin-top: 2px; }
 
-        .header h1 {
-            color: var(--text-color);
-            font-size: 24px;
-            font-weight: 700;
-            margin-bottom: 12px;
-        }
+    /* Upload Zone */
+    .upload-zone {
+        border: 2px dashed var(--border-color);
+        border-radius: 12px;
+        padding: 40px 20px;
+        margin: 24px 0;
+        background: rgba(255, 255, 255, 0.03);
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    .upload-zone:hover {
+        border-color: var(--danger-color);
+        background: rgba(239, 68, 68, 0.05);
+    }
+    .upload-icon { font-size: 48px; color: var(--danger-color); margin-bottom: 16px; }
+    .file-input { display: none; }
 
-        .header span {
-            color: var(--primary-color);
-        }
+    .selected-file {
+        display: none;
+        margin: 16px 0;
+        padding: 12px;
+        background: rgba(239, 68, 68, 0.1);
+        border-radius: 8px;
+        color: var(--danger-color);
+        border: 1px solid var(--danger-color);
+    }
 
-        .header p {
-            color: var(--secondary-text);
-            font-size: 16px;
-        }
+    /* Buttons */
+    .btn-action {
+        background-color: transparent;
+        color: var(--danger-color);
+        border: 2px solid var(--danger-color);
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        justify-content: center;
+    }
+    .btn-action:hover { background-color: var(--danger-color); color: var(--bg-color); }
+    
+    .btn-secondary {
+        background-color: transparent;
+        color: var(--secondary-text);
+        border: 2px solid var(--border-color);
+    }
+    .btn-secondary:hover { background-color: var(--border-color); color: #fff; }
 
-        .upload-zone {
-            border: 2px dashed var(--border-color);
-            border-radius: 12px;
-            padding: 40px 20px;
-            margin: 24px 0;
-            background: rgba(255, 255, 255, 0.03);
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
+    /* Format Guide */
+    .format-guide {
+        margin-top: 32px;
+        padding: 24px;
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 8px;
+        text-align: left;
+        border: 1px solid var(--border-color);
+    }
+    .format-guide h3 { font-size: 18px; margin-bottom: 16px; color: var(--danger-color); }
+    .csv-example {
+        background: #000000;
+        color: #e2e8f0;
+        padding: 16px;
+        border-radius: 6px;
+        font-family: monospace;
+        margin-top: 12px;
+        border: 1px solid var(--border-color);
+        font-size: 13px;
+        line-height: 1.8;
+    }
 
-        .upload-zone:hover {
-            border-color: var(--primary-color);
-            background: rgba(52, 211, 153, 0.05);
-        }
+    /* Results */
+    .results-section { margin-top: 32px; text-align: left; }
+    .summary-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+    .summary-chip { padding: 8px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; }
+    
+    .chip-red    { background: rgba(239,68,68,0.15);   color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+    .chip-yellow { background: rgba(251,191,36,0.15);  color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); }
+    .chip-gray   { background: rgba(156,163,175,0.15); color: #9ca3af; border: 1px solid rgba(156,163,175,0.3); }
 
-        .upload-icon {
-            font-size: 48px;
-            color: var(--primary-color);
-            margin-bottom: 16px;
-        }
+    .result-block { margin-bottom: 20px; }
+    .result-block-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+        padding: 12px 16px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background: rgba(255,255,255,0.03);
+        user-select: none;
+    }
+    .result-block-header h3 { font-size: 15px; margin: 0; flex: 1; }
+    .result-block-header .caret { font-size: 11px; color: var(--secondary-text); transition: transform 0.2s; }
+    .result-block-body { display: none; margin-top: 8px; }
+    .result-block-body.open { display: block; }
 
-        .file-input {
-            display: none;
-        }
+    .result-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .result-table th { text-align: left; padding: 8px 12px; color: var(--secondary-text); border-bottom: 1px solid var(--border-color); }
+    .result-table td { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: top; }
 
-        .btn-upload {
-            background-color: transparent;
-            color: var(--primary-color);
-            border: 2px solid var(--primary-color);
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
+    /* Confirm Modal */
+    .confirm-overlay { 
+        display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); 
+        z-index: 999; align-items: center; justify-content: center; backdrop-filter: blur(4px);
+    }
+    .confirm-overlay.show { display: flex; }
+    .confirm-box { 
+        background: var(--card-bg); border: 1px solid var(--danger-color); 
+        border-radius: 12px; padding: 32px; max-width: 400px; width: 90%; text-align: center;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    }
+    .confirm-box h3 { color: var(--danger-color); font-size: 20px; margin-bottom: 12px; }
+    .confirm-box p  { color: var(--secondary-text); font-size: 14px; margin-bottom: 24px; line-height: 1.5; }
+    .confirm-box .actions { display: flex; gap: 12px; justify-content: center; }
+    .confirm-box .btn-action { width: auto; padding: 10px 20px; }
 
-        .btn-upload:hover {
-            background-color: var(--primary-color);
-            color: var(--bg-color);
-        }
+    .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 24px;
+        color: var(--secondary-text);
+        text-decoration: none;
+        font-size: 14px;
+        transition: color 0.2s;
+    }
+    .back-link:hover { color: #fff; }
 
-        .format-guide {
-            margin-top: 32px;
-            padding: 24px;
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 8px;
-            text-align: left;
-            border: 1px solid var(--border-color);
-        }
+    @media (max-width: 640px) {
+        .container { margin: 20px auto; }
+        .upload-card { padding: 24px 16px; }
+        .summary-bar { flex-direction: column; }
+    }
+</style>
 
-        .format-guide h3 {
-            font-size: 18px;
-            margin-bottom: 16px;
-            color: var(--primary-color);
-        }
+<div class="container">
+    <div class="upload-card">
 
-        .csv-example {
-            background: #000000;
-            color: #e2e8f0;
-            padding: 16px;
-            border-radius: 6px;
-            font-family: monospace;
-            margin-top: 12px;
-            border: 1px solid var(--border-color);
-        }
+        <div class="header">
+            <h1><span>Bulk User Delete</span></h1>
+            <p>Upload a CSV to permanently remove multiple accounts</p>
+        </div>
 
-        .selected-file {
-            display: none;
-            margin: 16px 0;
-            padding: 12px;
-            background: rgba(52, 211, 153, 0.1);
-            border-radius: 8px;
-            color: var(--primary-color);
-            border: 1px solid var(--primary-color);
-        }
-
-        @media (max-width: 640px) {
-            .container {
-                margin: 20px auto;
-            }
-
-            .upload-card {
-                padding: 24px 16px;
-            }
-
-            .header h1 {
-                font-size: 20px;
-            }
-
-            .upload-zone {
-                padding: 24px 16px;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="upload-card">
-            <div class="header">
-                <h1><span>Bulk User Deletion</span></h1>
-                <h3>Welcome, <span>{{ user.username }}</span></h3>
-                <p>Upload your CSV file to delete multiple users at once</p>
-            </div>
-
-            <form method="post" enctype="multipart/form-data" id="uploadForm">
-                {% csrf_token %}
-                <div class="upload-zone" id="dropZone">
-                    <i class="fas fa-cloud-upload-alt upload-icon"></i>
-                    <p>Drag and drop your CSV file here</p>
-                    <p style="color: var(--secondary-text);">or</p>
-                    <button type="button" class="btn-upload" onclick="document.getElementById('fileInput').click()">
-                        <i class="fas fa-file-csv"></i>
-                        Choose File
-                    </button>
-                    <input type="file" id="fileInput" name="csv_file" accept=".csv" class="file-input" required>
-                </div>
-
-                <div class="selected-file" id="fileInfo">
-                    <i class="fas fa-file-alt"></i>
-                    <span id="fileName"></span>
-                </div>
-
-                <button type="submit" class="btn-upload">
-                    <i class="fas fa-upload"></i>
-                    Upload and Process
-                </button>
-            </form>
-
-            <div class="format-guide">
-                <h3>CSV Format Guidelines</h3>
-                <p>Your CSV file should contain the following columns:</p>
-                <ul style="margin: 8px 0 8px 24px; color: var(--secondary-text);">
-                    <li>Name (Full name of the user)</li>
-                    
-                </ul>
-                <div class="csv-example">
-Name,<br>
-Moni Dutt<br>
-Tanush <br>
-Rachit<br>
-Naman<br>
-                </div>
+        <div class="danger-banner">
+            <i class="fas fa-exclamation-triangle"></i>
+            <div>
+                <strong>Irreversible Action:</strong> All orders, trades, and profile data linked to deleted users will be permanently removed and cannot be recovered.
             </div>
         </div>
+
+        {% if messages %}
+            {% for message in messages %}
+            <div style="margin-bottom:16px;padding:12px 16px;border-radius:8px;font-size:14px;text-align:left;
+                {% if message.tags == 'error' %}background:rgba(239,68,68,0.12);color:#f87171;border:1px solid rgba(239,68,68,0.25);
+                {% else %}background:rgba(52,211,153,0.12);color:#34d399;border:1px solid rgba(52,211,153,0.25);{% endif %}">
+                {{ message }}
+            </div>
+            {% endfor %}
+        {% endif %}
+
+        <form method="POST" enctype="multipart/form-data" id="delete-form">
+            {% csrf_token %}
+            <div class="upload-zone" id="dropZone">
+                <i class="fas fa-trash-alt upload-icon"></i>
+                <p>Drag and drop your CSV file here</p>
+                <p style="color: var(--secondary-text); margin: 8px 0;">or</p>
+                <button type="button" class="btn-action" style="width: auto;" onclick="document.getElementById('fileInput').click()">
+                    <i class="fas fa-file-csv"></i> Choose File
+                </button>
+                <input type="file" id="fileInput" name="csv_file" accept=".csv" class="file-input" required>
+            </div>
+
+            <div class="selected-file" id="fileInfo">
+                <i class="fas fa-file-alt"></i>
+                <span id="fileName"></span>
+            </div>
+
+            <button type="button" class="btn-action" onclick="showConfirm()">
+                <i class="fas fa-user-times"></i> Delete Users from CSV
+            </button>
+        </form>
+
+        <div class="format-guide">
+            <h3>CSV Format Guidelines</h3>
+            <p>Only the first two columns are read. Extra columns are ignored. Both are required for every row:</p>
+            <ul style="margin: 10px 0 10px 24px; color: var(--secondary-text);">
+                <li><strong style="color:#fff;">Roll</strong> — Numbers only (used for verification)</li>
+                <li><strong style="color:#fff;">Name</strong> — Alphabets only (must match existing account)</li>
+            </ul>
+            <div class="csv-example">
+                Roll,Name<br>
+                10234,AliceSmith<br>
+                10235,BobJones<br>
+                10236,CarolWu
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        {% if results %}
+        <div class="results-section">
+            <div class="summary-bar">
+                <div class="summary-chip chip-red">Deleted: {{ results.total_deleted }}</div>
+                <div class="summary-chip chip-yellow">Not Found: {{ results.total_not_found }}</div>
+                <div class="summary-chip chip-gray">Errors: {{ results.total_errors }}</div>
+            </div>
+
+            {% if results.deleted %}
+            <div class="result-block">
+                <div class="result-block-header" onclick="toggleBlock(this)">
+                    <h3 style="color:#ef4444;">Successfully Deleted ({{ results.total_deleted }})</h3>
+                    <span class="caret">▼</span>
+                </div>
+                <div class="result-block-body open">
+                    <table class="result-table">
+                        <thead><tr><th>Row</th><th>Name</th></tr></thead>
+                        <tbody>
+                            {% for u in results.deleted %}
+                            <tr><td>{{ u.row }}</td><td>{{ u.name }}</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if results.not_found %}
+            <div class="result-block">
+                <div class="result-block-header" onclick="toggleBlock(this)">
+                    <h3 style="color:#fbbf24;">Not Found ({{ results.total_not_found }})</h3>
+                    <span class="caret">▼</span>
+                </div>
+                <div class="result-block-body">
+                    <table class="result-table">
+                        <thead><tr><th>Row</th><th>Name</th></tr></thead>
+                        <tbody>
+                            {% for u in results.not_found %}
+                            <tr><td>{{ u.row }}</td><td>{{ u.name }}</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if results.errors %}
+            <div class="result-block">
+                <div class="result-block-header" onclick="toggleBlock(this)">
+                    <h3 style="color:#9ca3af;">Errors ({{ results.total_errors }})</h3>
+                    <span class="caret">▼</span>
+                </div>
+                <div class="result-block-body">
+                    <table class="result-table">
+                        <thead><tr><th>Row</th><th>Name</th><th>Reason</th></tr></thead>
+                        <tbody>
+                            {% for u in results.errors %}
+                            <tr>
+                                <td>{{ u.row }}</td>
+                                <td>{{ u.name }}</td>
+                                <td style="color:#f87171;">{{ u.reason }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <a href="{% url 'admin_home' %}" class="back-link">
+            <i class="fas fa-arrow-left"></i> Back to Admin Console
+        </a>
     </div>
+</div>
 
-    <script>
-        const dropZone = document.getElementById('dropZone');
-        const fileInput = document.getElementById('fileInput');
-        const fileInfo = document.getElementById('fileInfo');
-        const fileName = document.getElementById('fileName');
+<!-- Confirm Modal -->
+<div class="confirm-overlay" id="confirm-overlay">
+    <div class="confirm-box">
+        <i class="fas fa-exclamation-circle" style="font-size: 32px; color: var(--danger-color); margin-bottom: 12px;"></i>
+        <h3>Confirm Deletion</h3>
+        <p>This will permanently delete all accounts listed in the CSV. This action cannot be undone.</p>
+        <div class="actions">
+            <button class="btn-action btn-secondary" onclick="hideConfirm()">Cancel</button>
+            <button class="btn-action" onclick="submitDelete()">Yes, Delete</button>
+        </div>
+    </div>
+</div>
 
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, preventDefaults, false);
-            document.body.addEventListener(eventName, preventDefaults, false);
-        });
+<script>
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileInfo  = document.getElementById('fileInfo');
+    const fileName  = document.getElementById('fileName');
 
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropZone.addEventListener(eventName, highlight, false);
-        });
+    // Drag and Drop Logic
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(e => {
+        dropZone.addEventListener(e, ev => { ev.preventDefault(); ev.stopPropagation(); });
+    });
 
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, unhighlight, false);
-        });
+    ['dragenter', 'dragover'].forEach(e =>
+        dropZone.addEventListener(e, () => {
+            dropZone.style.borderColor = 'var(--danger-color)';
+            dropZone.style.background  = 'rgba(239, 68, 68, 0.05)';
+        })
+    );
 
-        dropZone.addEventListener('drop', handleDrop, false);
+    ['dragleave', 'drop'].forEach(e =>
+        dropZone.addEventListener(e, () => {
+            dropZone.style.borderColor = 'var(--border-color)';
+            dropZone.style.background  = 'rgba(255,255,255,0.03)';
+        })
+    );
 
-        function preventDefaults (e) {
-            e.preventDefault();
-            e.stopPropagation();
+    dropZone.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+    fileInput.addEventListener('change', function () { handleFiles(this.files); });
+
+    function handleFiles(files) {
+        if (!files.length) return;
+        const file = files[0];
+        if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
+            fileInfo.style.display = 'block';
+            fileName.textContent   = file.name;
+        } else {
+            alert('Please upload a valid CSV file.');
+            fileInput.value = '';
+            fileInfo.style.display = 'none';
         }
+    }
 
-        function highlight(e) {
-            dropZone.style.border = '2px dashed var(--primary-color)';
-            dropZone.style.background = 'rgba(52, 211, 153, 0.05)';
+    // Toggle Results Logic
+    function toggleBlock(header) {
+        const body  = header.nextElementSibling;
+        const caret = header.querySelector('.caret');
+        body.classList.toggle('open');
+        caret.style.transform = body.classList.contains('open') ? '' : 'rotate(-90deg)';
+    }
+
+    // Modal Logic
+    function showConfirm() {
+        if (!fileInput.files.length) {
+            alert('Please select a CSV file first.');
+            return;
         }
+        document.getElementById('confirm-overlay').classList.add('show');
+    }
 
-        function unhighlight(e) {
-            dropZone.style.border = '2px dashed var(--border-color)';
-            dropZone.style.background = 'rgba(255, 255, 255, 0.03)';
-        }
+    function hideConfirm() {
+        document.getElementById('confirm-overlay').classList.remove('show');
+    }
 
-        function handleDrop(e) {
-            const dt = e.dataTransfer;
-            const files = dt.files;
-            handleFiles(files);
-        }
-
-        fileInput.addEventListener('change', function(e) {
-            handleFiles(this.files);
-        });
-
-        function handleFiles(files) {
-            if (files.length > 0) {
-                const file = files[0];
-                if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
-                    fileInfo.style.display = 'block';
-                    fileName.textContent = file.name;
-                } else {
-                    alert('Please upload a CSV file');
-                    fileInput.value = '';
-                }
-            }
-        }
-    </script>
-</body>
-</html>
+    function submitDelete() {
+        hideConfirm();
+        document.getElementById('delete-form').submit();
+    }
+</script>
+{% endblock %}

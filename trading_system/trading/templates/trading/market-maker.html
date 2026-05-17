@@ -683,13 +683,13 @@ document.addEventListener('DOMContentLoaded', async function(){
   }
 
   bidQuantityInput.addEventListener('input', function () {
-    bidDisclosedInput.value = this.value;
+    // bidDisclosedInput.value = this.value;
     syncPairedQuantities('bid');
     validateDisclosed('bid');
   });
 
   askQuantityInput.addEventListener('input', function () {
-    askDisclosedInput.value = this.value;
+    // askDisclosedInput.value = this.value;
     syncPairedQuantities('ask');
     validateDisclosed('ask');
   });
