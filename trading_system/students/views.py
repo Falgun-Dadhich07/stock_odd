@@ -109,6 +109,38 @@ def send_email_to_user(username, password, email):
         return False
 
 
+def send_deletion_email_to_user(username, email):
+    """
+    Send email notifying the user that their account has been deleted
+    """
+    subject = 'Your OrderBook Account Has Been Deleted'
+    message = f"""
+    Hello {username},
+
+    We are writing to inform you that your OrderBook account has been deleted.
+
+    If you believe this was done in error or have any questions, please contact
+    your administrator.
+
+    Regards,
+    <FACulty Name>
+    """
+
+    try:
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL,
+            [email],
+            fail_silently=False,
+        )
+        logger.info(f"Deletion email sent successfully to {email}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send deletion email to {email}. Error: {str(e)}")
+        return False
+
+
 
 
 
@@ -139,8 +171,13 @@ def bulk_user_delete(request):
                     username = row[0].strip()
                     try:
                         user = User.objects.get(username=username)
+                        user_email = user.email
                         user.delete()
                         deleted_count += 1
+                        try:
+                            send_deletion_email_to_user(username, user_email)
+                        except Exception as email_error:
+                            logger.error(f"Failed to send deletion email to {username}. Error: {str(email_error)}")
                     except User.DoesNotExist:
                         not_found_users.append(username)
             
