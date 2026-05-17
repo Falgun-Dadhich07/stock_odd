@@ -1,19 +1,69 @@
 from django.db import models
+from django.contrib.auth.models import AbstractUser, BaseUserManager # Switched to BaseUserManager
 from django.utils.timezone import now
 from django.core.exceptions import ValidationError
 
+class CustomUserManager(BaseUserManager):
+    def create_user(self, user_id, email=None, password=None, **extra_fields):
+        if not user_id:
+            raise ValueError("The User ID field must be set")
+        
+        email = self.normalize_email(email)
+        
+        # Sync Django's background username field with your user_id string
+        extra_fields.setdefault('username', user_id)
+        
+        user = self.model(user_id=user_id, email=email, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
 
-class BaseUser(models.Model):
-    username = models.CharField(max_length=100, unique=True)
+    def create_superuser(self, user_id, email=None, password=None, **extra_fields):
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('role', 'ADMIN')
+        extra_fields.setdefault('name', 'Admin User')  # Fallback to pass non-nullable field validation
+
+        if extra_fields.get('is_staff') is not True:
+            raise ValueError('Superuser must have is_staff=True.')
+        if extra_fields.get('is_superuser') is not True:
+            raise ValueError('Superuser must have is_superuser=True.')
+
+        return self.create_user(user_id, email, password, **extra_fields)
+    
+class BaseUser(AbstractUser):
+    user_id = models.CharField(max_length=100, unique=True, verbose_name="User ID")
+    name = models.CharField(max_length=150)
+
     ROLE_CHOICES = (
         ('TRADER', 'Trader'),
         ('MARKET_MAKER', 'Market Maker'),
         ('ADMIN', 'Admin'),
     )
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
-    def __str__(self):
-        return self.username
+    
+    USERNAME_FIELD = 'user_id'
+    REQUIRED_FIELDS = ['name', 'email']  # Explicitly tells createsuperuser what to prompt you for
 
+    objects = CustomUserManager()  # Links the new clean manager
+
+    groups = models.ManyToManyField(
+        'auth.Group',
+        related_name='base_user_groups',
+        blank=True,
+        help_text='The groups this user belongs to.',
+        verbose_name='groups',
+    )
+    user_permissions = models.ManyToManyField(
+        'auth.Permission',
+        related_name='base_user_permissions',
+        blank=True,
+        help_text='Specific permissions for this user.',
+        verbose_name='user permissions',
+    )
+
+    def __str__(self):
+        return f"{self.name} ({self.user_id})"
 
 class Trader(BaseUser):
     def allowed_order_modes(self):

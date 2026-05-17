@@ -1,6 +1,5 @@
 from django.shortcuts import render
 from django.core.mail import send_mail
-# from django.contrib.auth.forms import UserCreationForm
 from django.contrib import messages
 from django.shortcuts import redirect
 from django.conf import settings
@@ -10,20 +9,31 @@ from trading.models import BaseUser
 
 logger = logging.getLogger(__name__)
 from .forms import UserRegisterForm
-# Create your views here.
+
+#  Create your views here.
 def register(request):
-    form = UserRegisterForm()
     if request.method == 'POST':
         form = UserRegisterForm(request.POST)
         if form.is_valid():
-            form.save()  
-            username=form.cleaned_data.get('username')
-            # messages.success(request, f'Account created for {username}!')/
-            return redirect("login")
-
+            form.save()
+            return redirect('login')  # Or whatever your login route name is
     else:
         form = UserRegisterForm()
+        
     return render(request, 'trading/register.html', {'form': form})
+# def register(request):
+#     form = UserRegisterForm()
+#     if request.method == 'POST':
+#         form = UserRegisterForm(request.POST)
+#         if form.is_valid():
+#             form.save()  
+#             username=form.cleaned_data.get('username')
+#             # messages.success(request, f'Account created for {username}!')/
+#             return redirect("login")
+
+#     else:
+#         form = UserRegisterForm()
+#     return render(request, 'trading/register.html', {'form': form})
 
 import csv
 from django.contrib.auth.models import User

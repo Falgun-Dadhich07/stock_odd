@@ -96,7 +96,7 @@ TEMPLATES = [
 
 ASGI_APPLICATION = "trading_system.asgi.application"
 WSGI_APPLICATION = "trading_system.wsgi.application"
-# AUTH_USER_MODEL = 'trading.User'  # Replace with your actual app name
+AUTH_USER_MODEL = 'trading.BaseUser'  # Replace with your actual app name
 
 
 # Database

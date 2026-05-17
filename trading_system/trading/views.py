@@ -18,10 +18,12 @@ from django.contrib.auth import logout as auth_logout
 from .utils import match_order  # Assuming match_order is in utils.py
 from django.http import JsonResponse
 
-from django.contrib.auth.models import User as AuthUser
+# from django.contrib.auth.models import User as AuthUser
+from django.contrib.auth import get_user_model
 
 logger = logging.getLogger(__name__)
 
+User = get_user_model()
 
 def _visible_disclosed(order):
     if not order:
@@ -84,12 +86,16 @@ def _get_or_create_base_user(auth_user):
     return None
 
 
+from trading.models import BaseUser 
+
 def _is_admin(auth_user):
-    from django.contrib.auth.models import User
+    if not auth_user or auth_user.is_anonymous:
+        return False
     try:
-        fresh = User.objects.get(pk=auth_user.pk)
-        return fresh.is_superuser
-    except User.DoesNotExist:
+        # Use BaseUser instead of User
+        fresh = BaseUser.objects.get(pk=auth_user.pk)
+        return fresh.role == 'ADMIN' or fresh.is_superuser
+    except BaseUser.DoesNotExist:
         return False
 
 
