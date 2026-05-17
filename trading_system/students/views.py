@@ -47,25 +47,54 @@ def bulk_user_upload(request):
         form = CSVUploadForm(request.POST, request.FILES)
         if form.is_valid():
             csv_file = request.FILES['csv_file']
-            decoded_file = csv_file.read().decode('utf-8').splitlines()
-            csv_reader = csv.reader(decoded_file)
-            next(csv_reader, None)
+            logger.info(f"Bulk user upload started. File: '{csv_file.name}', Size: {csv_file.size} bytes")
 
+            try:
+                decoded_file = csv_file.read().decode('utf-8').splitlines()
+            except Exception as e:
+                logger.error(f"Failed to read or decode CSV file '{csv_file.name}'. Error: {str(e)}")
+                messages.error(request, 'Failed to read the uploaded file.')
+                return redirect('admin_home')
+
+            csv_reader = csv.reader(decoded_file)
+            next(csv_reader, None)  # Skip header row
+            logger.info("CSV header row skipped. Beginning row processing.")
+
+            row_number = 0
             for row in csv_reader:
-                if len(row) >= 2:  # Ensure at least two columns exist
-                    username, email = row[:2]  # Get username and email
-                    password = row[2] if len(row) > 2 else 'defaultpassword'  # Set password if given, else default
-                    
-                    if not User.objects.filter(username=username).exists():
-                        User.objects.create_user(username=username, email=email, password=password)
-                    try:
-                        send_email_to_user(username, password, email)
+                row_number += 1
+                logger.debug(f"Processing row {row_number}: {row}")
+
+                if len(row) < 2:
+                    logger.warning(f"Row {row_number} skipped — insufficient columns (expected at least 2, got {len(row)}): {row}")
+                    error_count += 1
+                    continue
+
+                username, email = row[:2]  # Get username and email
+                password = row[2] if len(row) > 2 else 'defaultpassword'  # Set password if given, else default
+                logger.info(f"Row {row_number}: processing username='{username}', email='{email}'")
+
+                if not User.objects.filter(username=username).exists():
+                    User.objects.create_user(username=username, email=email, password=password)
+                    logger.info(f"Row {row_number}: created new user '{username}'")
+                else:
+                    logger.info(f"Row {row_number}: user '{username}' already exists, skipping creation")
+
+                try:
+                    logger.info(f"Row {row_number}: calling send_email_to_user() for username='{username}', email='{email}'")
+                    email_sent = send_email_to_user(username, password, email)
+                    if email_sent:
+                        logger.info(f"Row {row_number}: send_email_to_user() returned True for '{email}' — email sent successfully")
                         success_count += 1
-                    
-                    except Exception as e:
-                        logger.error(f"Error processing row: {row}. Error: {str(e)}")
+                    else:
+                        logger.error(f"Row {row_number}: send_email_to_user() returned False for '{email}' — email failed to send")
                         error_count += 1
-            
+
+                except Exception as e:
+                    logger.error(f"Row {row_number}: unhandled exception while sending email to '{email}'. Error: {str(e)}")
+                    error_count += 1
+
+            logger.info(f"Bulk user upload complete. Rows processed: {row_number}, Emails sent: {success_count}, Errors: {error_count}")
             messages.success(request, f"Users created successfully! and email sent to {success_count} users. and error in {error_count} users")
             return redirect('admin_home')
 
