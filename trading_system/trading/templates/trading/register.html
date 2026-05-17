@@ -54,6 +54,18 @@
       {% csrf_token %}
       <h2>Register</h2>
       <p class="auth-sub">Create your account</p>
+      {% if form.errors %}
+      <div style="color: #ff4d4d; margin-bottom: 12px; text-align: left;">
+        {% for field in form %}
+          {% for error in field.errors %}
+            <p>{{ field.label }}: {{ error }}</p>
+          {% endfor %}
+        {% endfor %}
+        {% for error in form.non_field_errors %}
+          <p>{{ error }}</p>
+        {% endfor %}
+      </div>
+      {% endif %}
 
       <!-- User ID Field -->
       <div class="form-group">

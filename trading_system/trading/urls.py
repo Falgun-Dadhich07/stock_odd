@@ -37,6 +37,7 @@ urlpatterns = [
     # =========================
     path('bulk_user_upload/', views.bulk_user_upload, name='bulk_user_upload'),
     path('bulk-delete/', views.bulk_user_delete, name='bulk_user_delete'),
+    path('register/', views.register, name='register'),
 
     # =========================
     # TRADER

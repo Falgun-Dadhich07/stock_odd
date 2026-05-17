@@ -7,12 +7,9 @@ class CustomUserManager(BaseUserManager):
     def create_user(self, user_id, email=None, password=None, **extra_fields):
         if not user_id:
             raise ValueError("The User ID field must be set")
-        
         email = self.normalize_email(email)
-        
-        # Sync Django's background username field with your user_id string
+        # username must be set (AbstractUser requires it) — mirror user_id
         extra_fields.setdefault('username', user_id)
-        
         user = self.model(user_id=user_id, email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
@@ -22,15 +19,14 @@ class CustomUserManager(BaseUserManager):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
         extra_fields.setdefault('role', 'ADMIN')
-        extra_fields.setdefault('name', 'Admin User')  # Fallback to pass non-nullable field validation
-
+        extra_fields.setdefault('name', 'Admin User')
         if extra_fields.get('is_staff') is not True:
             raise ValueError('Superuser must have is_staff=True.')
         if extra_fields.get('is_superuser') is not True:
             raise ValueError('Superuser must have is_superuser=True.')
-
         return self.create_user(user_id, email, password, **extra_fields)
-    
+
+
 class BaseUser(AbstractUser):
     user_id = models.CharField(max_length=100, unique=True, verbose_name="User ID")
     name = models.CharField(max_length=150)
@@ -41,36 +37,46 @@ class BaseUser(AbstractUser):
         ('ADMIN', 'Admin'),
     )
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
-    
-    USERNAME_FIELD = 'user_id'
-    REQUIRED_FIELDS = ['name', 'email']  # Explicitly tells createsuperuser what to prompt you for
 
-    objects = CustomUserManager()  # Links the new clean manager
+    # Use user_id for login instead of username.
+    # username still exists (AbstractUser) but we mirror it from user_id
+    # in the manager so it satisfies the unique constraint silently.
+    USERNAME_FIELD = 'user_id'
+    REQUIRED_FIELDS = ['name', 'email']
+
+    objects = CustomUserManager()
 
     groups = models.ManyToManyField(
         'auth.Group',
         related_name='base_user_groups',
         blank=True,
-        help_text='The groups this user belongs to.',
-        verbose_name='groups',
     )
     user_permissions = models.ManyToManyField(
         'auth.Permission',
         related_name='base_user_permissions',
         blank=True,
-        help_text='Specific permissions for this user.',
-        verbose_name='user permissions',
     )
 
     def __str__(self):
         return f"{self.name} ({self.user_id})"
 
+
+# Trader and MarketMaker are MTI children of BaseUser.
+# They add NO extra DB fields — only the Python helper method.
+# Do NOT create their rows explicitly in upload/register views;
+# the role field on BaseUser is the source of truth for routing.
 class Trader(BaseUser):
+    class Meta:
+        proxy = True  # <-- KEY CHANGE: proxy instead of MTI
+
     def allowed_order_modes(self):
         return ['MARKET']
 
 
 class MarketMaker(BaseUser):
+    class Meta:
+        proxy = True  # <-- KEY CHANGE: proxy instead of MTI
+
     def allowed_order_modes(self):
         return ['LIMIT']
 
@@ -108,8 +114,6 @@ class Order(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
-
-    
 
 
     user = models.ForeignKey(BaseUser, on_delete=models.CASCADE)

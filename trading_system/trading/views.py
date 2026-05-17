@@ -12,6 +12,7 @@ import re
 import csv
 import io
 from django.contrib import messages
+from .forms import UserRegisterForm
 from .utils import broadcast_orderbook_update  # Assuming broadcast_orderbook_update is in utils.py
 from django.contrib.auth import logout as auth_logout
 
@@ -24,6 +25,7 @@ from django.contrib.auth import get_user_model
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
+AuthUser = User
 
 def _visible_disclosed(order):
     if not order:
@@ -903,10 +905,11 @@ def _validate_csv_row(row_num, roll, username, mail, role, password):
         errors.append(f'Roll "{roll}" must contain numbers only.')
  
     # Username: alphabets only
+    # Username: alphabets and spaces allowed
     if not username:
         errors.append('Username is empty.')
-    elif not username.isalpha():
-        errors.append(f'Username "{username}" must contain alphabets only.')
+    elif not re.match(r'^[a-zA-Z\s\-]+$', username):
+        errors.append(f'Username "{username}" must contain alphabets and spaces only.')
  
     # Mail: must contain '@' and '.'
     if not mail:
@@ -932,102 +935,143 @@ def _validate_csv_row(row_num, roll, username, mail, role, password):
  
     return errors
  
- 
+
+def register(request):
+    if request.method == 'POST':
+        form = UserRegisterForm(request.POST)
+        if form.is_valid():
+            user_id  = form.cleaned_data['user_id']
+            name     = form.cleaned_data['name']
+            email    = form.cleaned_data['email']
+            role     = form.cleaned_data['role']
+            password = form.cleaned_data['password1']
+
+            # Guard: block duplicate user_id before attempting DB writes
+            if BaseUser.objects.filter(user_id=user_id).exists():
+                form.add_error('user_id', 'A user with this ID already exists.')
+                return render(request, 'trading/register.html', {'form': form})
+
+            # try:
+            #     with transaction.atomic():
+            #         # Step 1 — one BaseUser INSERT via the custom manager.
+            #         # create_user(user_id, ...) sets username=user_id internally,
+            #         # hashes the password, and saves — no second BaseUser row.
+            #         base_user = User.objects.create_user(
+            #             user_id=user_id,
+            #             email=email,
+            #             password=password,
+            #             name=name,
+            #             role=role,
+            #         )
+
+            #         # Step 2 — MTI child row only; baseuser_ptr_id points at
+            #         # the already-created BaseUser so Django does NOT insert
+            #         # a second trading_baseuser row.
+            #         if role == 'TRADER':
+            #             Trader.objects.get_or_create(baseuser_ptr_id=base_user.pk)
+            #         elif role == 'MARKET_MAKER':
+            #             MarketMaker.objects.get_or_create(baseuser_ptr_id=base_user.pk)
+
+            #     messages.success(request, 'Account created successfully. Please log in.')
+            #     return redirect('login')
+
+            # except Exception as e:
+            #     messages.error(request, f'Registration failed: {e}')
+            #     return render(request, 'trading/register.html', {'form': form})
+
+            try:
+                with transaction.atomic():
+                    base_user = User.objects.create_user(
+                        user_id=user_id,
+                        email=email,
+                        password=password,
+                        name=name,
+                        role=role,
+                    )
+                messages.success(request, 'Account created successfully. Please log in.')
+                return redirect('login')
+            except Exception as e:
+                messages.error(request, f'Registration failed: {e}')
+                return render(request, 'trading/register.html', {'form': form})
+
+    else:
+        form = UserRegisterForm()
+
+    return render(request, 'trading/register.html', {'form': form})
+
 @login_required
 def bulk_user_upload(request):
     if not _is_admin(request.user):
         return redirect('role_router')
- 
+
     results = None
- 
+
     if request.method == 'POST':
         csv_file = request.FILES.get('csv_file')
- 
+
         if not csv_file:
             messages.error(request, 'No file uploaded.')
             return render(request, 'trading/bulk_upload.html', {'results': results})
- 
+
         if not csv_file.name.endswith('.csv'):
             messages.error(request, 'Please upload a valid .csv file.')
             return render(request, 'trading/bulk_upload.html', {'results': results})
- 
+
         try:
-            decoded = csv_file.read().decode('utf-8-sig')  # utf-8-sig strips BOM if present
+            decoded = csv_file.read().decode('utf-8-sig')
         except UnicodeDecodeError:
             messages.error(request, 'File encoding error. Please save your CSV as UTF-8.')
             return render(request, 'trading/bulk_upload.html', {'results': results})
- 
+
         reader = csv.DictReader(io.StringIO(decoded))
         print("FIELDNAMES:", reader.fieldnames)
         actual_headers = [h.strip() for h in reader.fieldnames if h.strip()] if reader.fieldnames else []
- 
-        # Validate headers exactly
-        if not actual_headers or actual_headers != list(REQUIRED_HEADERS):
+
+        if not all(header in actual_headers for header in REQUIRED_HEADERS):
             messages.error(
                 request,
-                f'Invalid headers. Expected exactly: {", ".join(REQUIRED_HEADERS)}'
+                f'Invalid headers. Missing required fields. Expected: {", ".join(REQUIRED_HEADERS)}'
             )
             return render(request, 'trading/bulk_upload.html', {'results': results})
- 
+
         created_users = []
         skipped_users = []
         invalid_rows  = []
- 
-        for row_num, row in enumerate(reader, start=2):  # row 1 is header
+
+        for row_num, row in enumerate(reader, start=2):
             roll     = (row.get('Roll')     or '').strip()
-            name = (row.get('Name') or '').strip()
+            name     = (row.get('Name')     or '').strip()
             mail     = (row.get('Mail')     or '').strip()
             role     = (row.get('Role')     or '').strip()
             password = (row.get('Password') or '').strip()
             print(f"ROW {row_num}: roll='{roll}' name='{name}' isdigit={roll.isdigit()}")
- 
-            # Field-level validation
+
             row_errors = _validate_csv_row(row_num, roll, name, mail, role, password)
             if row_errors:
                 invalid_rows.append({'row': row_num, 'Name': name or '—', 'errors': row_errors})
                 continue
- 
-            # Skip if Django auth user already exists
-            if AuthUser.objects.filter(username=roll).exists():
+
+            # Check by user_id — the actual unique field that the constraint protects.
+            if BaseUser.objects.filter(user_id=roll).exists():
                 skipped_users.append({'row': row_num, 'Name': name, 'reason': f'Roll {roll} already exists.'})
                 continue
- 
-            if BaseUser.objects.filter(username=roll).exists():
-                skipped_users.append({'row': row_num, 'Name': name, 'reason': f'BaseUser Roll {roll} already exists.'})
-                continue
- 
+
             try:
                 with transaction.atomic():
-                    # 1. Create Django auth user (password is hashed automatically)
-                    AuthUser.objects.create_user(
-                        username=roll,         
-                        first_name=name,  
+                    # One INSERT into trading_baseuser. Done.
+                    # No Trader/MarketMaker rows to create — proxy models have no table.
+                    base_user = User.objects.create_user(
+                        user_id=roll,
                         email=mail,
                         password=password,
+                        name=name,
+                        role=role,
                     )
- 
-                    # # 2. Create BaseUser
-                    # base_user, created = BaseUser.objects.get_or_create(
-                    #     username=roll,       
-                    #     defaults={'role': role}
-                    # )
-                    
-                    # # If the signal created it without a role, update it now
-                    # if not created and base_user.role != role:
-                    #     base_user.role = role
-                    #     base_user.save()
- 
-                    # 3. Create role-specific profile
-                    if role == 'TRADER':
-                        Trader.objects.get_or_create(username=roll, defaults={'role': 'TRADER'})
-                    elif role == 'MARKET_MAKER':
-                        MarketMaker.objects.get_or_create(username=roll, defaults={'role': 'MARKET_MAKER'})
- 
                 created_users.append({'row': row_num, 'username': name, 'role': role, 'mail': mail})
- 
+
             except Exception as e:
-                invalid_rows.append({'row': row_num, 'username': name, 'errors': [str(e)]})
- 
+                invalid_rows.append({'row': row_num, 'username': name, 'errors': [str(e)]})         
+
         results = {
             'created':       created_users,
             'skipped':       skipped_users,
@@ -1036,9 +1080,8 @@ def bulk_user_upload(request):
             'total_skipped': len(skipped_users),
             'total_invalid': len(invalid_rows),
         }
- 
+
     return render(request, 'trading/bulk_upload.html', {'results': results})
- 
  
 # ============================================================
 # BULK USER DELETE
@@ -1103,7 +1146,7 @@ def bulk_user_delete(request):
 
             try:
                 with transaction.atomic():
-                    auth_exists = AuthUser.objects.filter(username=roll).exists()
+                    auth_exists = User.objects.filter(username=roll).exists()
                     base_exists = BaseUser.objects.filter(username=roll).exists()
 
                     if not auth_exists and not base_exists:
@@ -1113,7 +1156,7 @@ def bulk_user_delete(request):
                     Trader.objects.filter(username=roll).delete()
                     MarketMaker.objects.filter(username=roll).delete()
                     BaseUser.objects.filter(username=roll).delete()
-                    AuthUser.objects.filter(username=roll).delete()
+                    User.objects.filter(username=roll).delete()
 
                     deleted_users.append({'row': row_num, 'name': display_name})
 
