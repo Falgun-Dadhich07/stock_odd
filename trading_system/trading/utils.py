@@ -59,9 +59,16 @@ def _log_match_summary(order, initial_quantity, total_matched, stage, note=''):
         note,
     )
 
-
+from decimal import Decimal, ROUND_HALF_UP
 def match_order(new_order):   
     print("match")
+
+    if new_order.price is not None:
+        new_order.price = Decimal(str(new_order.price)).quantize(
+            Decimal('0.01'), 
+            rounding=ROUND_HALF_UP
+        )
+        
     # changes
     closing_price= None
     initial_quantity = max(int(new_order.quantity or 0), 0)

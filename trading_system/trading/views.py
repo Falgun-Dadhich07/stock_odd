@@ -5,6 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.csrf import ensure_csrf_cookie
+from decimal import Decimal, ROUND_HALF_UP
 import json
 import logging
 import re
@@ -273,7 +274,16 @@ def market_maker_home(request):
             order_type = request.POST.get('order_type')
             order_mode = 'LIMIT'
             quantity = int(request.POST.get('quantity', 0))
-            disclosed = int(request.POST.get('disclosed_quantity', 0))
+            
+            raw_disclosed = request.POST.get('disclosed_quantity', '').strip()
+            if not raw_disclosed:
+                return JsonResponse({'success': False, 'message': 'Disclosed quantity is required.'}, status=400)
+            
+            try:
+                disclosed = int(raw_disclosed)
+            except (ValueError, TypeError):
+                return JsonResponse({'success': False, 'message': 'Disclosed quantity must be a valid integer.'}, status=400)
+
             paired_quantity = request.POST.get('paired_quantity')
             stoploss_order = request.POST.get('Stoploss_order', 'NO')
             target_price = request.POST.get('Target_price')
@@ -325,10 +335,25 @@ def market_maker_home(request):
                     'message': f'Disclosed quantity too small. Need at least {min_disclosed}, got {disclosed}. Minimum is 10% of order quantity.'
                 }, status=400)
 
-            # Handle price parsing for LIMIT orders
+            # # Handle price parsing for LIMIT orders
+            # try:
+            #     price = float(request.POST.get('price', 0)) if order_mode == "LIMIT" else None
+            # except (ValueError, TypeError):
+            #     return JsonResponse({'success': False, 'message': 'Invalid price format'}, status=400)
+
+            # if order_mode == "LIMIT" and (price is None or price <= 0):
+            #     return JsonResponse({'success': False, 'message': 'Valid price required for limit orders'}, status=400)
+
+            raw_price = request.POST.get('price', '0')
             try:
-                price = float(request.POST.get('price', 0)) if order_mode == "LIMIT" else None
-            except (ValueError, TypeError):
+                if order_mode == "LIMIT" and raw_price not in (None, ''):
+                    price = Decimal(str(raw_price)).quantize(
+                        Decimal('0.01'), 
+                        rounding=ROUND_HALF_UP
+                    )
+                else:
+                    price = None
+            except (ValueError, TypeError, Exception):
                 return JsonResponse({'success': False, 'message': 'Invalid price format'}, status=400)
 
             if order_mode == "LIMIT" and (price is None or price <= 0):
