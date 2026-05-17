@@ -7,12 +7,17 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.csrf import ensure_csrf_cookie
 import json
 import logging
+import re
+import csv
+import io
 from django.contrib import messages
 from .utils import broadcast_orderbook_update  # Assuming broadcast_orderbook_update is in utils.py
 from django.contrib.auth import logout as auth_logout
 
 from .utils import match_order  # Assuming match_order is in utils.py
 from django.http import JsonResponse
+
+from django.contrib.auth.models import User as AuthUser
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +84,12 @@ def _get_or_create_base_user(auth_user):
 
 
 def _is_admin(auth_user):
-    return auth_user.is_superuser
+    from django.contrib.auth.models import User
+    try:
+        fresh = User.objects.get(pk=auth_user.pk)
+        return fresh.is_superuser
+    except User.DoesNotExist:
+        return False
 
 
 @login_required
@@ -538,11 +548,6 @@ def trader_home(request):
     return render(request, 'trading/trader.html', {'orders': orders, 'trades': trades, 'stoploss_orders': stoploss_orders, 'base_role': user.role})
 
 
-
-
-
-
-
 @login_required
 def orderbook(request):
     base_user = _get_or_create_base_user(request.user)
@@ -688,8 +693,6 @@ def update_prev_order(request):
             return JsonResponse({'success': False, 'message': 'Invalid data provided.'})
         except Exception as e:
             return JsonResponse({'success': False, 'message': str(e)})
-
-
 
 
 @login_required
@@ -849,3 +852,250 @@ def execute_order():
             match_order(new_order)
             sell_order.delete()
     
+
+# ============================================================
+# BULK USER UPLOAD
+# ============================================================
+ 
+REQUIRED_HEADERS = ['Roll', 'Name', 'Mail', 'Role', 'Password']
+VALID_ROLES = {'TRADER', 'MARKET_MAKER'}
+ 
+ 
+def _validate_csv_row(row_num, roll, username, mail, role, password):
+    """Returns a list of error strings. Empty list = valid row."""
+    errors = []
+ 
+    # Roll: numbers only
+    if not roll:
+        errors.append('Roll is empty.')
+    elif not roll.isdigit():
+        errors.append(f'Roll "{roll}" must contain numbers only.')
+ 
+    # Username: alphabets only
+    if not username:
+        errors.append('Username is empty.')
+    elif not username.isalpha():
+        errors.append(f'Username "{username}" must contain alphabets only.')
+ 
+    # Mail: must contain '@' and '.'
+    if not mail:
+        errors.append('Mail is empty.')
+    elif '@' not in mail or '.' not in mail:
+        errors.append(f'Mail "{mail}" is not a valid email address.')
+ 
+    # Role
+    if not role:
+        errors.append('Role is empty.')
+    elif role not in VALID_ROLES:
+        errors.append(f'Role "{role}" must be exactly TRADER or MARKET_MAKER.')
+ 
+    # Password: must contain letters, digits, and special characters
+    if not password:
+        errors.append('Password is empty.')
+    else:
+        has_alpha   = bool(re.search(r'[a-zA-Z]', password))
+        has_digit   = bool(re.search(r'\d', password))
+        has_special = bool(re.search(r'[^a-zA-Z0-9]', password))
+        if not (has_alpha and has_digit and has_special):
+            errors.append('Password must contain a mix of alphabets, numbers, and special characters.')
+ 
+    return errors
+ 
+ 
+@login_required
+def bulk_user_upload(request):
+    if not _is_admin(request.user):
+        return redirect('role_router')
+ 
+    results = None
+ 
+    if request.method == 'POST':
+        csv_file = request.FILES.get('csv_file')
+ 
+        if not csv_file:
+            messages.error(request, 'No file uploaded.')
+            return render(request, 'trading/bulk_upload.html', {'results': results})
+ 
+        if not csv_file.name.endswith('.csv'):
+            messages.error(request, 'Please upload a valid .csv file.')
+            return render(request, 'trading/bulk_upload.html', {'results': results})
+ 
+        try:
+            decoded = csv_file.read().decode('utf-8-sig')  # utf-8-sig strips BOM if present
+        except UnicodeDecodeError:
+            messages.error(request, 'File encoding error. Please save your CSV as UTF-8.')
+            return render(request, 'trading/bulk_upload.html', {'results': results})
+ 
+        reader = csv.DictReader(io.StringIO(decoded))
+        print("FIELDNAMES:", reader.fieldnames)
+        actual_headers = [h.strip() for h in reader.fieldnames if h.strip()] if reader.fieldnames else []
+ 
+        # Validate headers exactly
+        if not actual_headers or actual_headers != list(REQUIRED_HEADERS):
+            messages.error(
+                request,
+                f'Invalid headers. Expected exactly: {", ".join(REQUIRED_HEADERS)}'
+            )
+            return render(request, 'trading/bulk_upload.html', {'results': results})
+ 
+        created_users = []
+        skipped_users = []
+        invalid_rows  = []
+ 
+        for row_num, row in enumerate(reader, start=2):  # row 1 is header
+            roll     = (row.get('Roll')     or '').strip()
+            name = (row.get('Name') or '').strip()
+            mail     = (row.get('Mail')     or '').strip()
+            role     = (row.get('Role')     or '').strip()
+            password = (row.get('Password') or '').strip()
+            print(f"ROW {row_num}: roll='{roll}' name='{name}' isdigit={roll.isdigit()}")
+ 
+            # Field-level validation
+            row_errors = _validate_csv_row(row_num, roll, name, mail, role, password)
+            if row_errors:
+                invalid_rows.append({'row': row_num, 'Name': name or '—', 'errors': row_errors})
+                continue
+ 
+            # Skip if Django auth user already exists
+            if AuthUser.objects.filter(username=roll).exists():
+                skipped_users.append({'row': row_num, 'Name': name, 'reason': f'Roll {roll} already exists.'})
+                continue
+ 
+            if BaseUser.objects.filter(username=roll).exists():
+                skipped_users.append({'row': row_num, 'Name': name, 'reason': f'BaseUser Roll {roll} already exists.'})
+                continue
+ 
+            try:
+                with transaction.atomic():
+                    # 1. Create Django auth user (password is hashed automatically)
+                    AuthUser.objects.create_user(
+                        username=roll,         
+                        first_name=name,  
+                        email=mail,
+                        password=password,
+                    )
+ 
+                    # # 2. Create BaseUser
+                    # base_user, created = BaseUser.objects.get_or_create(
+                    #     username=roll,       
+                    #     defaults={'role': role}
+                    # )
+                    
+                    # # If the signal created it without a role, update it now
+                    # if not created and base_user.role != role:
+                    #     base_user.role = role
+                    #     base_user.save()
+ 
+                    # 3. Create role-specific profile
+                    if role == 'TRADER':
+                        Trader.objects.get_or_create(username=roll, defaults={'role': 'TRADER'})
+                    elif role == 'MARKET_MAKER':
+                        MarketMaker.objects.get_or_create(username=roll, defaults={'role': 'MARKET_MAKER'})
+ 
+                created_users.append({'row': row_num, 'username': name, 'role': role, 'mail': mail})
+ 
+            except Exception as e:
+                invalid_rows.append({'row': row_num, 'username': name, 'errors': [str(e)]})
+ 
+        results = {
+            'created':       created_users,
+            'skipped':       skipped_users,
+            'invalid':       invalid_rows,
+            'total_created': len(created_users),
+            'total_skipped': len(skipped_users),
+            'total_invalid': len(invalid_rows),
+        }
+ 
+    return render(request, 'trading/bulk_upload.html', {'results': results})
+ 
+ 
+# ============================================================
+# BULK USER DELETE
+# ============================================================
+ 
+@login_required
+def bulk_user_delete(request):
+
+    import logging
+    log = logging.getLogger(__name__)
+    log.warning(f"METHOD={request.method} user={request.user} is_auth={request.user.is_authenticated} is_super={request.user.is_superuser}")
+    
+    if not _is_admin(request.user):
+        return redirect('role_router')
+
+    results = None
+
+    if request.method == 'POST':
+        csv_file = request.FILES.get('csv_file')
+
+        if not csv_file:
+            messages.error(request, 'No file uploaded.')
+            return render(request, 'trading/bulk_delete.html', {'results': results})
+
+        if not csv_file.name.endswith('.csv'):
+            messages.error(request, 'Please upload a valid .csv file.')
+            return render(request, 'trading/bulk_delete.html', {'results': results})
+
+        try:
+            decoded = csv_file.read().decode('utf-8-sig')
+        except UnicodeDecodeError:
+            messages.error(request, 'File encoding error. Please save your CSV as UTF-8.')
+            return render(request, 'trading/bulk_delete.html', {'results': results})
+
+        reader = csv.DictReader(io.StringIO(decoded))
+
+        DELETE_HEADERS = ['Roll', 'Name']
+        if not reader.fieldnames or [h.strip() for h in reader.fieldnames[:2]] != DELETE_HEADERS:
+            messages.error(
+                request,
+                f'Invalid headers. First two columns must be: {", ".join(DELETE_HEADERS)}'
+            )
+            return render(request, 'trading/bulk_delete.html', {'results': results})
+
+        deleted_users = []
+        not_found     = []
+        error_rows    = []
+
+        for row_num, row in enumerate(reader, start=2):
+            roll = (row.get('Roll') or '').strip()
+            name = (row.get('Name') or '').strip()
+            print(f"ROW {row_num}: roll='{roll}' name='{name}' isdigit={roll.isdigit()}")
+            display_name = name if name else roll
+
+            if not roll:
+                error_rows.append({'row': row_num, 'name': display_name or '—', 'reason': 'Roll number is empty.'})
+                continue
+
+            if not roll.isdigit():
+                error_rows.append({'row': row_num, 'name': display_name, 'reason': f'Roll "{roll}" must be numbers only.'})
+                continue
+
+            try:
+                with transaction.atomic():
+                    auth_exists = AuthUser.objects.filter(username=roll).exists()
+                    base_exists = BaseUser.objects.filter(username=roll).exists()
+
+                    if not auth_exists and not base_exists:
+                        not_found.append({'row': row_num, 'name': display_name})
+                        continue
+
+                    Trader.objects.filter(username=roll).delete()
+                    MarketMaker.objects.filter(username=roll).delete()
+                    BaseUser.objects.filter(username=roll).delete()
+                    AuthUser.objects.filter(username=roll).delete()
+
+                    deleted_users.append({'row': row_num, 'name': display_name})
+
+            except Exception as e:
+                error_rows.append({'row': row_num, 'name': display_name, 'reason': str(e)})
+
+        results = {
+            'deleted':         deleted_users,
+            'not_found':       not_found,
+            'errors':          error_rows,
+            'total_deleted':   len(deleted_users),
+            'total_not_found': len(not_found),
+            'total_errors':    len(error_rows),
+        }
+
+    return render(request, 'trading/bulk_delete.html', {'results': results})

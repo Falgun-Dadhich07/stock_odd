@@ -33,6 +33,12 @@ urlpatterns = [
     path('admin_home/', views.admin_home, name='admin_home'),
 
     # =========================
+    # ADMIN - Bulk Operations
+    # =========================
+    path('bulk_user_upload/', views.bulk_user_upload, name='bulk_user_upload'),
+    path('bulk-delete/', views.bulk_user_delete, name='bulk_user_delete'),
+
+    # =========================
     # TRADER
     # =========================
     path('trader_home/', views.trader_home, name='trader_home'),
@@ -46,7 +52,7 @@ urlpatterns = [
     path('market-maker/orderbook/', views.orderbook, name='mm_orderbook'),
     path('orderbook/', views.orderbook, name='orderbook'),
 
-    # 🔁 reuse EXISTING modify functionality
+    # reuse EXISTING modify functionality
     path('market-maker/modify/', views.modify, name='mm_modify'),
     path('market-maker/modify_order/', views.modify_order_page, name='mm_modify_order'),
     path('market-maker/modify_order/update_prev_order/', views.update_prev_order, name='mm_update_prev_order'),
